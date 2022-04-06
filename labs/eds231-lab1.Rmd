@@ -2,7 +2,8 @@
 title: "Lab 1"
 author: "Clarissa Boyajian"
 date: "4/6/2022"
-output: html_document
+output:
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,73 +16,20 @@ library(tidytext)
 ```
 
 
-## First query
+## Lab 1
+Query 
 
 ```{r}
-# create an object called t with the results of our query ("haaland")
-# the from JSON flatten the JSON object, then convert to a data frame
-t <- fromJSON(paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=haaland&api-key=",
-                     "qTBZr0Mz2Ak8icY1OZTCm0kfxdze9Gnn"), flatten = TRUE) # the string following "q=" is your query 
-# the string following "key=" is your API key 
-
-class(t) #what type of object is t?
-
-t <- t %>% 
-  data.frame()
-
-
-# Inspect our data
-class(t) #now what is it?
-dim(t) # how big is it?
-  # if prints: 10 33 - means 10 articles with 33 variables (ex: lead paragraph, key words, etc.)
-names(t) # what variables are we working with?
-#t <- readRDS("nytDat.rds") #in case of API emergency
-```
-
-
-```{r}
-# snippet = NYTimes thing
-# snippet = one sentence pulled from article (not summary or anything)
-t$response.docs.snippet[9] 
-
-# assign a snippet to x to use as fodder for `stringr` functions.  You can follow along using the sentence on the next line.
-
-x <- "Her nomination as secretary of the interior is historic, but as the first Native cabinet member, she would have to strike a delicate balance." 
-
-tolower(x) # helpful if you don't want "Her" to be considered different than "her"
-
-# split string by commas
-str_split(x, ','); 
-# split string at "t"s
-# notice what you split by isn't included
-str_split(x, 't') 
-
-# "historic" with "without precedent"
-str_replace(x, 'historic', 'without precedent')
-
-# replace first white spaces with "_"
-str_replace(x, ' ', '_') #first one
-# how do we replace all of them?
-str_replace_all(x, ' ', '_')
-
-str_detect(x, 't'); str_detect(x, 'tive') ### is pattern in the string? T/F
-str_locate(x, 't'); str_locate_all(x, 'as')
-```
-
-
-
-## Bigger query 
-
-```{r}
-term <- "Haaland" # use + to string together separate words
-begin_date <- "20210120" # YYYYMMDD
+api_key <- "qTBZr0Mz2Ak8icY1OZTCm0kfxdze9Gnn"
+term <- "urban+forest" # use + to string together separate words
+begin_date <- "20210401" # YYYYMMDD
 end_date <- "20220401" # YYYYMMDD
 
 # construct the query url using API operators
 baseurl <- paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=", term,
                   "&begin_date=", begin_date, 
                   "&end_date=", end_date,
-                  "&facet_filter=true&api-key=", "qTBZr0Mz2Ak8icY1OZTCm0kfxdze9Gnn", 
+                  "&facet_filter=true&api-key=", api_key, 
                   sep = "")
 ```
 
