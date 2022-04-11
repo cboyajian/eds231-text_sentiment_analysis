@@ -21,7 +21,7 @@ Query
 
 ```{r}
 api_key <- "qTBZr0Mz2Ak8icY1OZTCm0kfxdze9Gnn"
-term <- "urban+forest" # use + to string together separate words
+term <- "forest" # use + to string together separate words
 begin_date <- "20210401" # YYYYMMDD
 end_date <- "20220401" # YYYYMMDD
 
@@ -38,7 +38,7 @@ baseurl <- paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=", 
 # this code allows for obtaining multiple pages of query results (each search maxes out at 10 pages for NYTimes)
 initialQuery <- fromJSON(baseurl)
 
-maxPages <- round((initialQuery$response$meta$hits[1] / 10) - 1) 
+maxPages <- round((initialQuery$response$meta$hits[1] / 100) - 1) 
 
 pages <- list()
 for(i in 0:maxPages){
@@ -54,20 +54,6 @@ class(nytSearch)
 nytDat <- rbind_pages(pages)
 ```
 
-
-```{r}
-nytDat %>% 
-  group_by(response.docs.type_of_material) %>%
-  summarize(count = n()) %>%
-  mutate(percent = (count / sum(count)) * 100) %>%
-  ggplot() +
-  geom_bar(aes(y = percent, 
-               x = response.docs.type_of_material, 
-               fill = response.docs.type_of_material), 
-           stat = "identity") + 
-  coord_flip() +
-  labs(fill = "Material Types")
-```
 
 
 ```{r}
@@ -96,18 +82,7 @@ tokenized <- nytDat %>%
 tokenized %>%
   count(word, sort = TRUE) %>%
   filter(n > 5) %>% # illegible with all the words displayed
-  mutate(word = reorder(word, n)) %>%
-  ggplot(aes(n, word)) +
-  geom_col() +
-  labs(y = NULL,
-       x = "Number of times word appears")
-```
-
-
-```{r}
-# `tidytext` has list of common stopwords in English language
-data(stop_words) # pull data object from `tidytext` package
-stop_words # viwe list of stopwords
+  mutate(word = reorder(word, n))
 
 tokenized <- tokenized %>%
   anti_join(stop_words) # remove all rows that match a stopword
