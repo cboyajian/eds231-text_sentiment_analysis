@@ -21,7 +21,7 @@ Query
 
 ```{r}
 api_key <- "qTBZr0Mz2Ak8icY1OZTCm0kfxdze9Gnn"
-term <- "forest" # use + to string together separate words
+term <- "urban+forest" # use + to string together separate words
 begin_date <- "20210401" # YYYYMMDD
 end_date <- "20220401" # YYYYMMDD
 
@@ -38,7 +38,7 @@ baseurl <- paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=", 
 # this code allows for obtaining multiple pages of query results (each search maxes out at 10 pages for NYTimes)
 initialQuery <- fromJSON(baseurl)
 
-maxPages <- round((initialQuery$response$meta$hits[1] / 100) - 1) 
+maxPages <- round((initialQuery$response$meta$hits[1] / 10) - 1) 
 
 pages <- list()
 for(i in 0:maxPages){
@@ -75,18 +75,16 @@ names(nytDat) # look at variables
 
 paragraph <- names(nytDat)[6] # call the 6th column ("response.doc.lead_paragraph")
 
+data(stop_words) # pull data object from `tidytext` package
+
 # convert from text to `tidytext` format
 tokenized <- nytDat %>%
-  unnest_tokens(word, paragraph) # here: take paragraphs in and un-nest to word level (1 row for each word in paragraph)
+  # here: take paragraphs in and un-nest to word level (1 row for each word in paragraph)
+  unnest_tokens(word, paragraph) %>%
+  # remove all rows that match a stopword
+  anti_join(y = stop_words, by = "word") 
 
-tokenized %>%
-  count(word, sort = TRUE) %>%
-  filter(n > 5) %>% # illegible with all the words displayed
-  mutate(word = reorder(word, n))
-
-tokenized <- tokenized %>%
-  anti_join(stop_words) # remove all rows that match a stopword
-
+# plot of words and # of times appear (after removing stopwords)
 tokenized %>%
   count(word, sort = TRUE) %>%
   filter(n > 5) %>%
@@ -99,27 +97,22 @@ tokenized %>%
 
 
 ```{r}
-#inspect the list of tokens (words)
-tokenized$word # still have not useful tokens
+# inspect the list of tokens (words)
+#tokenized$word
 
-clean_tokens <- str_replace_all(string = tokenized$word,
-                                pattern = "land[a-z, A-Z]*", 
-                                replacement = "land") # stem tribe words
-clean_tokens <- str_remove_all(string = clean_tokens, 
-                               pattern = "[:digit:]") # remove all numbers
-clean_tokens <- str_remove_all(string = clean_tokens, 
-                               pattern = "washington")
-clean_tokens <- gsub("’s", '', clean_tokens)
+# remove all numbers
+clean_tokens <- str_remove_all(string = tokenized$word,
+                               pattern = "[:digit:]")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = ",")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "'s")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "^s$")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "it’s")
 
 tokenized$clean <- clean_tokens # put the cleaned tokens into the `tokenized` df `clean` column
-
-tokenized %>%
-  count(clean, sort = TRUE) %>%
-  filter(n > 10) %>% # illegible with all the words displayed
-  mutate(clean = reorder(clean, n)) %>%
-  ggplot(aes(n, clean)) +
-  geom_col() +
-  labs(y = NULL)
 ```
 
 
@@ -140,4 +133,57 @@ tokenized %>%
   labs(y = NULL)
 ```
 
+```{r}
+nytDat %>% 
+  mutate(pubDay = gsub("T.*", "", response.docs.pub_date)) %>% # replace "T." with "" - remove time but leave dates
+  group_by(pubDay) %>%
+  summarise(count = n()) %>%
+  filter(count >= 2) %>%
+  ggplot() +
+  geom_bar(aes(x = reorder(pubDay, count), 
+               y = count), 
+           stat = "identity") + 
+  coord_flip()
+```
+
+
+```{r}
+headline <- names(nytDat)[21] # call the 6th column ("response.doc.lead_paragraph")
+
+# convert from text to `tidytext` format
+tokenized_headline <- nytDat %>%
+  # here: take paragraphs in and un-nest to word level (1 row for each word in paragraph)
+  unnest_tokens(word, headline) %>%
+  # remove all rows that match a stopword
+  anti_join(y = stop_words, by = "word") 
+
+# remove all numbers
+clean_tokens <- str_remove_all(string = tokenized_headline$word,
+                               pattern = "[:digit:]")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = ",")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "'s")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "^s$")
+clean_tokens <- str_remove_all(string = clean_tokens,
+                               pattern = "it’s")
+
+tokenized_headline$clean <- clean_tokens # put the cleaned tokens into the `tokenized_headline` df `clean` column
+
+# remove the empty strings
+tib_headlines <-subset(tokenized_headline, clean != "")
+
+# reassign
+tokenized_headline <- tib_headlines
+
+#try again
+tokenized_headline %>%
+  count(clean, sort = TRUE) %>%
+  filter(n > 5) %>% # illegible with all the words displayed
+  ggplot(aes(x = n, 
+             y = reorder(clean, n))) +
+  geom_col() +
+  labs(y = NULL)
+```
 
