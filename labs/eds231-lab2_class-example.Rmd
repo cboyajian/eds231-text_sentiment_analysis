@@ -1,0 +1,221 @@
+---
+title: "Topic 3 - Sentiment Analysis"
+author: "Clarissa"
+date: "4/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate) #working with date data
+library(pdftools) #read in pdfs
+library(tidytext)
+library(here)
+library(LexisNexisTools) #Nexis Uni data wrangling
+library(sentimentr)
+```
+
+### Intro to sentiment analysis example
+
+```{r over_story_data}
+over <- pdf_text(here::here('data/overstory_exerpt.pdf'))
+
+over_df <- 
+  # create 1-column df with 'text' variable
+  data.frame(text = over) %>% 
+  # add a page number variable, 'page'
+  mutate(page = 1:n()) 
+
+# examine the beginning of the data frame
+over_text <- over_df %>%
+  filter(page %in% 8:41)%>%
+  mutate(text = str_split(text, '\n')) %>% #this splits by page. 
+  unnest(text) %>%  #this splits by line
+  mutate(line = str_to_lower(text)) #and convert to all lower case
+```
+
+
+```{r over_story_data, eval=FALSE}
+write_csv(over_text, here::here("data/over_text.csv"))
+#Note: \n, used above, is an example of an "escape sequence", which allow you to include characters that would otherwise break the code
+```
+
+```{r get_bing}
+bing_sent <- get_sentiments('bing') #grab the bing sentiment lexicon from tidytext
+head(bing_sent, n = 20)
+```
+
+```{r}
+over_text <- read_csv(here::here('data/over_text.csv'))
+
+# unnest to word-level tokens, remove stop words, and join sentiment words
+text_words <- over_text  %>%
+  unnest_tokens(output = word, input = text, token = 'words')
+
+sent_words <- 
+  # break text into individual words
+  text_words %>%
+  # returns only the rows without stop words
+  anti_join(stop_words, by = 'word') %>% 
+  # joins and retains only sentiment words
+  inner_join(bing_sent, by = 'word') 
+```
+
+```{r apply_sent_scores}
+sent_scores <- 
+  sent_words %>%
+  count(sentiment, page) %>%
+  spread(sentiment, n) %>%
+  mutate(
+    # single sentiment score per page
+    raw_score = positive - negative, 
+    # what is the average sentiment per page?
+    offset = mean(positive - negative), 
+    # how does this page's sentiment compare to that of the average page?
+    offset_score = (positive - negative) - offset) %>% 
+  arrange(desc(raw_score))
+
+sent_scores
+```
+
+```{r plot_sent_scores}
+ggplot(sent_scores, aes(x = page)) +
+  theme_classic() +
+  geom_bar(aes(y = raw_score), 
+           stat = 'identity', 
+           fill = 'lightblue') +
+  geom_bar(aes(y = offset_score), 
+           stat = 'identity', 
+           fill = 'slateblue3') +
+  geom_hline(yintercept = sent_scores$offset[1], 
+             linetype = 'dashed', size = .5) +
+  #coord_flip() +
+  theme(axis.title.y = element_blank()) +
+  labs(title = 'Sentiment analysis: The Overstory',
+       y = 'Sentiment score')
+```
+
+
+##### Origin of the NRC lexicon
+
+```{r nrc_sentiment}
+# requires downloading a large dataset via prompt
+nrc_sent <- get_sentiments('nrc') 
+
+nrc_fear <- get_sentiments("nrc") %>% 
+  filter(sentiment == "fear")
+
+# most common words by sentiment in text
+fear_words <- over_text  %>%
+  unnest_tokens(output = word, input = text, token = 'words') %>%
+  inner_join(nrc_fear) %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+nrc_word_counts <- text_words %>%
+  inner_join(get_sentiments("nrc")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+```
+
+```{r sent_counts}
+book_sent_counts <- text_words %>%
+        group_by(page) %>%
+        # mutate(page_num = 1:n(),
+        #        index = round(page_num / n(), 2)) %>%
+        # unnest_tokens(word, line) %>%
+        inner_join(get_sentiments("nrc")) %>%
+        group_by(sentiment) %>%
+        count(word, sentiment, sort = TRUE) %>%
+        ungroup()
+
+book_sent_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = n, 
+             y = word, 
+             fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+
+### Introduction to the Nexis Uni data source
+
+```{r nexis_data, message=FALSE}
+#setwd("/Users/mateorobbins/Desktop/Git/test/nexis_dat")
+#to follow along with this example, download this .docx to your working directory: 
+#https://github.com/MaRo406/EDS_231-text-sentiment/blob/main/nexis_dat/Nexis_IPCC_Results.docx
+
+my_files <- list.files(pattern = ".docx", path = here::here("data"),
+                       full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+
+dat <- lnt_read(my_files) # Object of class 'LNT output'
+
+# split LNT output class into three different dfs
+meta_df <- dat@meta
+articles_df <- dat@articles
+paragraphs_df <- dat@paragraphs
+
+dat2<- data_frame(element_id = seq(1:length(meta_df$Headline)), 
+                  Date = meta_df$Date, 
+                  Headline = meta_df$Headline)
+# May be of use for assignment: using the full text from the articles
+# paragraphs_dat <- data_frame(element_id = paragraphs_df$Art_ID, Text  = paragraphs_df$Paragraph)
+# 
+# dat3 <- inner_join(dat2,paragraphs_dat, by = "element_id")
+```
+
+```{r}
+# can we create a similar graph to Figure 3A from Froelich et al.? 
+mytext <- get_sentences(dat2$Headline)
+
+# approximate the overall sentiment for a given text (scale -1 to 1)
+# (attempts to correct for negation, context, etc.)
+sent <- sentiment(mytext)
+
+sent_df <- inner_join(x = dat2, y = sent, 
+                      by = "element_id")
+
+sentiment <- sentiment_by(sent_df$Headline)
+
+sent_df %>%
+  arrange(sentiment)
+```
+
+```{r custom_stop_words}
+custom_stop_words <- bind_rows(tibble(word = c("your_word"),  
+                                      lexicon = c("custom")), 
+                               stop_words)
+```
+
+
+```{r}
+sent_df %>% 
+  mutate(sentiment_groups = case_when(sentiment > 0 ~ 1,
+                                      sentiment == 0 ~ 0,
+                                      sentiment < 0 ~ -1),
+         factor(sentiment_groups, levels = c(1, 0, -1))) %>% 
+  group_by(Date, sentiment_groups) %>% 
+  summarise(mean_sentiment = mean(sentiment)) %>% 
+  ggplot(aes(x = Date,
+             y = mean_sentiment, 
+             color = sentiment_groups)) +
+  geom_line(position = "dodge") +
+  facet_wrap(~sentiment_groups)
+```
+
+
+
+
+
+
+
+
