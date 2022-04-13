@@ -199,17 +199,16 @@ custom_stop_words <- bind_rows(tibble(word = c("your_word"),
 
 ```{r}
 sent_df %>% 
-  mutate(sentiment_groups = case_when(sentiment > 0 ~ 1,
-                                      sentiment == 0 ~ 0,
-                                      sentiment < 0 ~ -1),
+  mutate(sentiment_groups = case_when(sentiment > 0 ~ "1",
+                                      sentiment == 0 ~ "0",
+                                      sentiment < 0 ~ "-1"),
          factor(sentiment_groups, levels = c(1, 0, -1))) %>% 
   group_by(Date, sentiment_groups) %>% 
   summarise(mean_sentiment = mean(sentiment)) %>% 
   ggplot(aes(x = Date,
              y = mean_sentiment, 
              color = sentiment_groups)) +
-  geom_line(position = "dodge") +
-  facet_wrap(~sentiment_groups)
+  geom_line(position = "dodge")
 ```
 
 
