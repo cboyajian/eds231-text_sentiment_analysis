@@ -1,0 +1,141 @@
+---
+title: 'Topic 3: Sentiment Analysis'
+author: "Clarissa"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate) #working with date data
+library(pdftools) #read in pdfs
+library(tidytext)
+library(here)
+library(LexisNexisTools) #Nexis Uni data wrangling
+library(sentimentr)
+library(scales)
+```
+
+
+## “IPCC” Nexis Uni data set sentiment plot
+
+```{r nexis_data, message=FALSE}
+IPCC_files <- list.files(pattern = "Nexis_IPCC_Results.docx", path = here::here("data"),
+                         full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+
+dat_IPCC <- lnt_read(IPCC_files) # Object of class 'LNT output'
+
+# split LNT output class into three different dfs
+meta_df_IPCC <- dat_IPCC@meta
+articles_df_IPCC <- dat_IPCC@articles
+paragraphs_df_IPCC <- dat_IPCC@paragraphs
+
+dat2_IPCC <- data_frame(element_id = seq(1:length(meta_df_IPCC$Headline)), 
+                        Date = meta_df_IPCC$Date, 
+                        Headline = meta_df_IPCC$Headline)
+```
+
+```{r}
+# can we create a similar graph to Figure 3A from Froelich et al.? 
+mytext_IPCC <- get_sentences(dat2_IPCC$Headline)
+
+# approximate the overall sentiment for a given text (scale -1 to 1)
+# (attempts to correct for negation, context, etc.)
+sent_IPCC <- sentiment(mytext_IPCC)
+
+sent_df_IPCC <- inner_join(x = dat2_IPCC, y = sent_IPCC, 
+                           by = "element_id")
+
+sentiment_IPCC <- sentiment_by(sent_df_IPCC$Headline)
+
+sent_df_IPCC %>%
+  arrange(sentiment)
+```
+
+```{r}
+sent_df_IPCC %>% 
+  mutate(sentiment_groups = case_when(sentiment > 0 ~ "1",
+                                      sentiment == 0 ~ "0",
+                                      sentiment < 0 ~ "-1"),
+         factor(sentiment_groups, levels = c(1, 0, -1))) %>% 
+  group_by(Date, sentiment_groups) %>% 
+  summarise(mean_sentiment = mean(sentiment)) %>% 
+  ggplot(aes(x = Date,
+             y = mean_sentiment, 
+             color = sentiment_groups)) +
+  geom_line(position = "dodge") +
+  labs(col = "Sentiment Groups",
+       y = "Average Sentiment",
+       title = "Average Sentiment per Day for Articles on the IPCC \nfrom April 5 to April 11, 2022",
+       caption = "Sentiment Codes: Positive (1), Neutral (0), Negative (-1)") +
+  guides(color = guide_legend(reverse = TRUE))
+```
+
+## “Heat Related Death” Nexis Uni data set
+
+```{r}
+my_files_heat <- list.files(pattern = "Files_100_heat_related_death.docx", path = here::here("data"),
+                            full.names = TRUE, recursive = TRUE, ignore.case = TRUE)
+
+dat_heat <- lnt_read(my_files_heat) # Object of class 'LNT output'
+
+# split LNT output class into three different dfs
+meta_df_heat <- dat_heat@meta
+articles_df_heat <- dat_heat@articles
+paragraphs_df_heat <- dat_heat@paragraphs
+
+dat2_heat <- data_frame(element_id = seq(1:length(meta_df_heat$Headline)), 
+                        Date = meta_df_heat$Date, 
+                        Headline = meta_df_heat$Headline)
+
+paragraphs_dat_heat <- data_frame(element_id = paragraphs_df_heat$Art_ID, Text  = paragraphs_df_heat$Paragraph)
+
+dat3_heat <- inner_join(dat2_heat, paragraphs_dat_heat, by = "element_id")
+```
+
+```{r}
+cleaned_data_heat <- dat3_heat %>% 
+  mutate(text_https = str_detect(string = dat3_heat$Text, pattern = "https", negate = TRUE)) %>% 
+  filter(text_https == TRUE)
+
+nrc_sentiment <- get_sentiments('nrc') #grab the bing sentiment lexicon from tidytext
+head(nrc_sentiment, n = 20)
+```
+
+
+```{r}
+cleaned_data_heat_words <- cleaned_data_heat  %>%
+  select(!text_https) %>% 
+  unnest_tokens(output = word, input = Text, token = 'words')
+
+cleaned_data_heat_sentiment_words <- cleaned_data_heat_words %>% #break text into individual words
+  anti_join(stop_words, by = 'word') %>% #returns only the rows without stop words
+  inner_join(nrc_sentiment, by = 'word') %>% #joins and retains only sentiment words
+  filter(!sentiment %in% c("negative", "positive"))
+```
+
+
+```{r, fig.width=10, fig.height=6}
+data_heat_graph <- cleaned_data_heat_sentiment_words %>% 
+  group_by(Date, sentiment) %>% 
+  summarise(count = n()) %>% 
+  mutate(sum_count = sum(count))
+
+
+ggplot(data = data_heat_graph,
+       aes(x = Date, 
+           y = count / sum_count,
+           color = sentiment)) +
+  geom_line() +
+  scale_y_continuous(labels = percent) +
+  facet_grid(~sentiment) +
+  theme(legend.position = "none") +
+  labs(y = "Percent of Total Words Each Day",
+       title = "Comparing Different Sentiment Categories Per Day")
+```
+
+Over time
+
