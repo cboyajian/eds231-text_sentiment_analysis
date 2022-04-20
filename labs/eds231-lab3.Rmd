@@ -1,0 +1,29 @@
+---
+title: "Week 4 Lab - Sentiment Analysis II"
+author: "Clarissa Boyajian"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytext)
+library(quanteda)
+library(quanteda.sentiment)
+library(quanteda.textstats)
+library(lubridate)
+library(wordcloud) #visualization of common words in the data set
+library(reshape2)
+```
+
+
+```{r tweet_data}
+
+raw_tweets <- read.csv("https://raw.githubusercontent.com/MaRo406/EDS_231-text-sentiment/main/dat/IPCC_tweets_April1-10_sample.csv", header = TRUE)
+```
+
+
+
+
