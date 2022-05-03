@@ -25,6 +25,7 @@ library(here)
 
 
 ```{r}
+## -- read in, clean, and wrangle data -- ##
 files <- list.files(path = here("data/Week5"),
                     pattern = "pdf$", full.names = TRUE)
 
@@ -76,7 +77,7 @@ paragraph_words <- unnest_tokens(paragraph_tokens,
 
 ## Question 1
 
-What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?
+*What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?*
 
 ```{r}
 # clean tokens
@@ -100,6 +101,7 @@ freq_words2$token <- rep("bigram", 20)
 freq_words2
 ```
 
+\newpage
 
 ```{r}
 # trigrams
@@ -113,13 +115,13 @@ freq_words_3$token <- rep("trigram", 20)
 freq_words_3
 ```
 
-The trigrams appear to be less informative than the bigrams. Many of the trigrams include repetitive information with 6 of the top 10 including the phrase "environmental justice" with another, less inpactful word. Wherease the bigrams seem to include more individual topics, such as "public health", "air quality", and "vulnerable communities". 
+**Answer:** The trigrams appear to be less informative than the bigrams. Many of the trigrams include repetitive information with 6 of the top 10 including the phrase "environmental justice" with another, less inpactful word. Whereas the bigrams seem to include more individual topics, such as "public health", "air quality", and "vulnerable communities". 
 
 
 
 ## Question 2
 
-Choose a new focal term to replace "justice" and recreate the correlation table and network (see corr_paragraphs and corr_network chunks). Explore some of the plotting parameters in the cor_network chunk to see if you can improve the clarity or amount of information your plot conveys. Make sure to use a different color for the ties!
+*Choose a new focal term to replace "justice" and recreate the correlation table and network (see corr_paragraphs and corr_network chunks). Explore some of the plotting parameters in the cor_network chunk to see if you can improve the clarity or amount of information your plot conveys. Make sure to use a different color for the ties!*
 
 ```{r}
 # word correlations
@@ -152,6 +154,7 @@ ggplot(data = corr_table_data,
        subtitle = "EPA EJ Reports")
 ```
 
+\newpage
 
 ```{r}
 health_cors <- word_cors %>% 
@@ -163,7 +166,7 @@ health_cors  %>%
   filter(n <= 50) %>% # get top 50 correlated words
   graph_from_data_frame() %>%
   ggraph(layout = "fr") +
-  geom_edge_link(aes(edge_alpha = correlation, edge_width = correlation), edge_colour = "cyan4") +
+  geom_edge_link(aes(edge_alpha = correlation, edge_width = correlation), edge_colour = "goldenrod") +
   geom_node_point(size = 5) +
   geom_node_text(aes(label = name), repel = TRUE, 
                  point.padding = unit(0.2, "lines")) +
@@ -171,13 +174,14 @@ health_cors  %>%
 ```
 
 
+\newpage
 
 ## Question 3
 
-Write a function that allows you to conduct a keyness analysis to compare two individual EPA reports (hint: that means target and reference need to both be individual reports). Run the function on 3 pairs of reports, generating 3 keyness plots.
+*Write a function that allows you to conduct a keyness analysis to compare two individual EPA reports (hint: that means target and reference need to both be individual reports). Run the function on 3 pairs of reports, generating 3 keyness plots.*
 
 ```{r}
-keyness_plots <- function(years, target){
+keyness_plots <- function(years, target = 1){
   # create corpus based on input files
   files <- list.files(path = here("data/Week5"),
                       pattern = "pdf$", full.names = TRUE)
@@ -207,15 +211,21 @@ keyness_plots <- function(years, target){
 ```
 
 
+\newpage
+
 ```{r}
 # keyness plot comparing 2 years
 keyness_plots(years = c(2015, 2018), target = 1)
 ```
 
+\newpage
+
 ```{r}
 # keyness plot comparing 2 years
 keyness_plots(years = c(2015, 2020), target = 1)
 ```
+
+\newpage
 
 ```{r}
 # keyness plot comparing 2 years
@@ -224,12 +234,25 @@ keyness_plots(years = c(2019, 2020), target = 1)
 
 ## Question 4
 
-Select a word or multi-word term of interest and identify words related to it using windowing and keyness comparison. To do this you will create two objects: one containing all words occurring within a 10-word window of your term of interest, and the second object containing all other words. Then run a keyness comparison on these objects. Which one is the target, and which the reference? [Hint](https://tutorials.quanteda.io/advanced-operations/target-word-collocations/)
+*Select a word or multi-word term of interest and identify words related to it using windowing and keyness comparison. To do this you will create two objects: one containing all words occurring within a 10-word window of your term of interest, and the second object containing all other words. Then run a keyness comparison on these objects. Which one is the target, and which the reference? [Hint](https://tutorials.quanteda.io/advanced-operations/target-word-collocations/)*
 
 ```{r}
+term <- c("public", "health", "public health")
 
+tokens_inside <- tokens_keep(tokens, pattern = term, window = 10) %>% 
+  tokens_remove(pattern = term) # remove the keywords
+
+tokens_outside <- tokens_remove(tokens, pattern = term, window = 10)
 ```
 
+```{r}
+doc_freq_matrix_inside <- dfm(tokens_inside)
+doc_freq_matrix_outside <- dfm(tokens_outside)
 
+tstat_key_inside <- textstat_keyness(rbind(doc_freq_matrix_inside, doc_freq_matrix_outside), 
+                                     target = seq_len(ndoc(doc_freq_matrix_inside)))
+head(tstat_key_inside, 20)
+```
 
+**Answer:** The target is the list of all words within the 10 word window based on the key terms of "public health". And the reference is the list of all other words in the EPA reports.
 
