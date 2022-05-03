@@ -42,6 +42,34 @@ epa_corp <- corpus(x = ej_pdf, text_field = "text" )
 more_stops <-c("2015","2016", "2017", "2018", "2019", "2020", "www.epa.gov", "https")
 add_stops <- tibble(word = c(stop_words$word, more_stops)) 
 stop_vec <- as_vector(add_stops)
+
+# convert to tidy format and apply my stop words
+raw_text <- tidy(epa_corp)
+
+# Distribution of most frequent words across documents
+raw_words <- raw_text %>%
+  mutate(year = as.factor(year)) %>%
+  unnest_tokens(word, text) %>%
+  anti_join(add_stops, by = 'word') %>%
+  count(year, word, sort = TRUE)
+
+# number of total words by document  
+total_words <- raw_words %>% 
+  group_by(year) %>% 
+  summarize(total = sum(n))
+
+report_words <- left_join(raw_words, total_words)
+ 
+paragraph_tokens <- unnest_tokens(raw_text, 
+                            output = paragraphs, input = text, 
+                            token = "paragraphs")
+
+paragraph_tokens <- paragraph_tokens %>%
+ mutate(par_id = 1:n())
+
+paragraph_words <- unnest_tokens(paragraph_tokens, 
+                                  output = word, input = paragraphs, 
+                                  token = "words")
 ```
 
 
@@ -51,8 +79,42 @@ stop_vec <- as_vector(add_stops)
 What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?
 
 ```{r}
-
+# clean tokens
+tokens <- tokens(epa_corp, remove_punct = TRUE) %>% 
+  tokens_select(min_nchar = 3) %>% 
+  tokens_tolower() %>% 
+  tokens_remove(pattern = (stop_vec))
+doc_freq_matrix <- dfm(tokens)
 ```
+
+
+```{r}
+# bigrams
+tokens_2 <- tokens_ngrams(tokens, n = 2)
+doc_freq_matrix_2 <- dfm(tokens_2) %>% 
+  dfm_remove(pattern = c(stop_vec))
+
+freq_words2 <- textstat_frequency(doc_freq_matrix_2, n = 20)
+freq_words2$token <- rep("bigram", 20)
+
+freq_words2
+```
+
+
+```{r}
+# trigrams
+tokens_3 <- tokens_ngrams(tokens, n = 3)
+doc_freq_matrix_3 <- dfm(tokens_3) %>% 
+  dfm_remove(pattern = c(stop_vec))
+
+freq_words_3 <- textstat_frequency(doc_freq_matrix_3, n = 20)
+freq_words_3$token <- rep("trigram", 20)
+
+freq_words_3
+```
+
+The trigrams appear to be less informative than the bigrams. Many of the trigrams include repetitive information with 6 of the top 10 including the phrase "environmental justice" with another, less inpactful word. Wherease the bigrams seem to include more individual topics, such as "public health", "air quality", and "vulnerable communities". 
+
 
 
 ## Question 2
@@ -60,7 +122,52 @@ What are the most frequent trigrams in the dataset? How does this compare to the
 Choose a new focal term to replace "justice" and recreate the correlation table and network (see corr_paragraphs and corr_network chunks). Explore some of the plotting parameters in the cor_network chunk to see if you can improve the clarity or amount of information your plot conveys. Make sure to use a different color for the ties!
 
 ```{r}
+# word correlations
+word_cors <- paragraph_words %>% 
+  add_count(par_id) %>% 
+  filter(n >= 50) %>% 
+  select(-n) %>%
+  pairwise_cor(word, par_id, sort = TRUE)
+```
 
+
+```{r}
+# words correlated with "environmental", "health", "equity", and "income"
+corr_table_data <- word_cors %>%
+  filter(item1 %in% c("environmental", "health", "equity", "income")) %>%
+  group_by(item1) %>%
+  top_n(6) %>%
+  ungroup() %>%
+  mutate(item1 = as.factor(item1),
+         name = reorder_within(item2, correlation, item1))
+
+ggplot(data = corr_table_data,
+       aes(y = name, x = correlation, fill = item1)) + 
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~item1, ncol = 2, scales = "free")+
+  scale_y_reordered() +
+  labs(y = NULL,
+       x = NULL,
+       title = "Correlations with key words",
+       subtitle = "EPA EJ Reports")
+```
+
+
+```{r}
+health_cors <- word_cors %>% 
+  filter(item1 == "health") %>%
+  mutate(n = 1:n()) # add column that goes 1 to max rows 
+                    # (added to column that is ordered highest to lowest for correlation)
+
+health_cors  %>%
+  filter(n <= 50) %>% # get top 50 correlated words
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = correlation, edge_width = correlation), edge_colour = "cyan4") +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = unit(0.2, "lines")) +
+  theme_void()
 ```
 
 
@@ -70,10 +177,50 @@ Choose a new focal term to replace "justice" and recreate the correlation table 
 Write a function that allows you to conduct a keyness analysis to compare two individual EPA reports (hint: that means target and reference need to both be individual reports). Run the function on 3 pairs of reports, generating 3 keyness plots.
 
 ```{r}
-
+keyness_plots <- function(years, target){
+  # create corpus based on input files
+  files <- list.files(path = here("data/Week5"),
+                      pattern = "pdf$", full.names = TRUE)
+  
+  ej_reports <- lapply(files, pdf_text)
+  
+  ej_pdf <- readtext(file = here("data/Week5", "*.pdf"), 
+                     docvarsfrom = "filenames", 
+                     docvarnames = c("type", "year"),
+                     sep = "_") %>% 
+    filter(docvar3 %in% years)
+  
+  # creating an initial corpus containing our data
+  epa_corp <- corpus(x = ej_pdf, text_field = "text" )
+  
+  tokens <- tokens(epa_corp, remove_punct = TRUE) %>% 
+    tokens_select(min_nchar = 3) %>% 
+    tokens_tolower() %>% 
+    tokens_remove(pattern = (stop_vec))
+  
+  doc_freq_matrix <- dfm(tokens)
+  
+  keyness <- textstat_keyness(doc_freq_matrix,
+                              target = target) # target = 1 (refers to first document)
+  textplot_keyness(keyness)
+}
 ```
 
 
+```{r}
+# keyness plot comparing 2 years
+keyness_plots(years = c(2015, 2018), target = 1)
+```
+
+```{r}
+# keyness plot comparing 2 years
+keyness_plots(years = c(2015, 2020), target = 1)
+```
+
+```{r}
+# keyness plot comparing 2 years
+keyness_plots(years = c(2019, 2020), target = 1)
+```
 
 ## Question 4
 
